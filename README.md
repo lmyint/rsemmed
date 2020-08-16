@@ -16,5 +16,4 @@ The full processed graph representation is available [here](https://drive.google
 | ------------- | ------------------- |
 | _Platforms:_  | _Linux_       |
 | R CMD check   | <a href="https://travis-ci.com/lmyint/rsemmed.svg?branch=master" alt="Build status"></a> |
-
-
+| Test coverage | <a href="https://codecov.io/gh/lmyint/rsemmed"><img src="https://codecov.io/gh/lmyint/rsemmed/branch/master/graph/badge.svg" alt="Code Coverage Status"/></a>   |                  |
