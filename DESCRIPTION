@@ -1,0 +1,35 @@
+Package: rsemmed
+Version: 0.99.0
+Title: An interface to the Semantic MEDLINE database
+Description: A programmatic interface to the Semantic MEDLINE database.
+    It provides functions for searching the database for concepts and 
+    finding paths between concepts. Path searching can also be tailored 
+    to user specifications, such as placing restrictions on concept 
+    types and the type of link between concepts. It also provides 
+    functions for summarizing and visualizing those paths. 
+Authors@R: 
+    person(given = "Leslie",
+           family = "Myint",
+           role = c("aut", "cre"),
+           email = "leslie.myint@gmail.com",
+           comment = c(ORCID = "0000-0003-2478-0331"))
+Depends:
+    R (>= 4.0),
+    methods,
+    magrittr,
+    igraph
+Suggests: 
+    testthat,
+    knitr,
+    BiocStyle,
+    rmarkdown
+Imports:
+    stringr,
+    dplyr
+VignetteBuilder: knitr
+License: Artistic-2.0
+Encoding: UTF-8
+RoxygenNote: 7.1.1
+URL: https://github.com/lmyint/rsemmed
+BugReports: https://github.com/lmyint/rsemmed/issues
+biocViews: Software, Annotation, Pathways, SystemsBiology
