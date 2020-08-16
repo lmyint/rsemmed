@@ -1,0 +1,485 @@
+---
+title: "The rsemmed User's Guide"
+author: "Leslie Myint"
+bibliography: rsemmed.bib
+abstract: >
+    A comprehensive guide to using the rsemmed package for 
+    exploring the Semantic MEDLINE database.
+output:
+    BiocStyle::html_document:
+        toc: TRUE
+        toc_float: true
+        code_folding: show
+vignette: >
+    %\VignetteIndexEntry{rsemmed User's Guide}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+---
+
+# Introduction
+
+The `r Biocpkg("rsemmed")` package provides a way for users to explore connections between the biological concepts present in the Semantic MEDLINE database [@Kilicoglu:2011] in a programmatic way.
+
+## Overview of Semantic MEDLINE
+
+The Semantic MEDLINE database (SemMedDB) is a collection of annotations of sentences from the abstracts of articles indexed in PubMed. These annotations take the form of subject-predicate-object triples of information. These triples are also called **predications**.
+
+An example predication is "Interleukin-12 INTERACTS_WITH IFNA1". Here, the subject is "Interleukin-12", the object is "IFNA1" (interferon alpha-1), and the predicate linking the subject and object is "INTERACTS_WITH". The Semantic MEDLINE database consists of tens of millions of these predications.
+
+Semantic MEDLINE also provides information on the broad categories into which biological concepts (predication subjects and objects) fall. This information is called the **semantic type** of a concept. The databases assigns 4-letter codes to semantic types. For example, "gngm" represents "Gene or Genome". Every concept in the database has one or more semantic types (abbreviated as "semtypes").
+
+Note: The information in Semantic MEDLINE is primarily computationally-derived. Thus, some information will seem nonsensical. For example, the reported semantic types of concepts might not quite match. The Semantic MEDLINE resource and this package are meant to facilitate an *initial* window of exploration into the literature. The hope is that this package helps guide more streamlined manual investigations of the literature.
+
+## Graph representation of SemMedDB
+
+The predications in SemMedDB can be represented in graph form. Nodes represent concepts, and directed edges represent predicates (concept linkers). In particular, the Semantic MEDLINE graph is a directed **multigraph** because multiple predicates are often present between pairs of nodes (e.g., "A ASSOCIATED_WITH B" and "A INTERACTS_WITH B"). `r Biocpkg("rsemmed")` relies on the `r CRANpkg("igraph")` package for efficient graph operations.
+
+### Full data availability
+
+The full processed graph representation is available [here](https://drive.google.com/file/d/1b2Drq_NktFmbCBUQHlVjmRG85u4OsavR/view?usp=sharing). It is a processed version of the PREDICATION table (a SQL dump file) available from the [National Library of Medicine site](https://skr3.nlm.nih.gov/SemMedDB/index.html) for Semantic MEDLINE. The next section describes details about the processing.
+
+In this vignette, we will explore a much smaller subset of the full graph that suffices to show the full functionality of `r Biocpkg("rsemmed")`.
+
+### Note about processed data
+
+The graph representation of SemMedDB contains a processed and summarized form of the raw database. The toy example below illustrates the summarization performed.
+
+ Subject   Subject semtype   Predicate   Object   Object semtype
+--------- ----------------- ----------- -------- ----------------
+    A            aapp        INHIBITS       B           gngm
+    A            gngm        INHIBITS       B           aapp
+
+The two rows show two predications that are treated as different predications because the semantic types ("semtypes") of the subject and object vary. In the processed data, such instances have been collapsed as shown below.
+
+ Subject   Subject semtype   Predicate   Object   Object semtype   # instances
+--------- ----------------- ----------- -------- ---------------- -------------
+    A         aapp,gngm      INHIBITS       B        aapp,gngm           2
+
+The different semantic types for a particular concept are collapsed into a single comma-separated string that is available via `igraph::vertex_attr(g, "semtype")`.
+
+The "# instances" column indicates that the "A INHIBITS B" predication was observed twice in the database. This piece of information is available as an edge attribute via `igraph::edge_attr(g, "num_instances")`. Similarly, predicate information is also an edge attribute accessible via `igraph::edge_attr(g, "predicate")`.
+
+A note of caution: Be careful when working with edge attributes in the Semantic MEDLINE graph manually. These operations can be very slow because there are over 18 million edges. Working with node/vertex attributes is much faster, but there are still a very large number of nodes (roughly 290,000).
+
+The rest of this vignette will showcase how to use `r Biocpkg("rsemmed")` functions to explore this graph.
+
+
+
+# Installation
+
+To install `r Biocpkg("rsemmed")`, start R and enter the following:
+
+```{r eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("rsemmed")
+```
+
+
+
+# Example workflow
+
+## Loading packages and data
+
+Load the `r Biocpkg("rsemmed")` package and the `g_small` object which contains a smaller version of the Semantic MEDLINE database.
+
+```{r}
+library(rsemmed)
+
+data(g_small)
+```
+
+This loads an object of class `igraph` named `g_small` into the workspace. The SemMedDB graph object is a necessary input for most of `r Biocpkg("rsemmed")`'s functions.
+
+(The full processed graph representation linked above contains an object of class `igraph` named `g`.)
+
+## Finding nodes
+
+The starting point for an `r Biocpkg("rsemmed")` exploration is to find nodes related to the initial ideas of interest. For example, we may wish to find connections between the ideas "sickle cell trait" and "malaria".
+
+The `rsemmed::find_nodes()` function allows you to search for nodes by name. We supply the graph and a regular expression to use in searching through the `name` attribute of the nodes. Finding the most relevant nodes will generally involve iteration.
+
+To find nodes related to the sickle cell trait, we can start by searching for nodes containing the word "sickle". (Note: searches ignore capitalization.)
+
+```{r}
+nodes_sickle <- find_nodes(g_small, pattern = "sickle")
+nodes_sickle
+```
+
+We may decide that only **sickle cell anemia** and the **sickle trait** are important. Conventional R subsetting allows us to keep the 3 related nodes:
+
+```{r}
+nodes_sickle <- nodes_sickle[c(1,3,5)]
+nodes_sickle
+```
+
+We can also search for nodes related to "malaria":
+
+```{r}
+nodes_malaria <- find_nodes(g_small, pattern = "malaria")
+nodes_malaria
+```
+
+There are `r length(nodes_malaria)` results, not all of which are printed, so we can display all results by accessing the `name` attribute of the returned nodes:
+
+```{r}
+nodes_malaria$name
+```
+
+Perhaps we only want to keep the nodes that relate to disease. We could use direct subsetting, but another option is to use `find_nodes()` again with `nodes_malaria` as the input. Using the `match` argument set to `FALSE` allows us to prune unwanted matches from our results.
+
+Below we iteratively prune matches to only keep disease-related results. Though this is not as condense as direct subsetting, it is more transparent about what was removed.
+
+```{r}
+nodes_malaria <- nodes_malaria %>%
+    find_nodes(pattern = "anti", match = FALSE) %>%
+    find_nodes(pattern = "test", match = FALSE) %>%
+    find_nodes(pattern = "screening", match = FALSE) %>%
+    find_nodes(pattern = "pigment", match = FALSE) %>%
+    find_nodes(pattern = "smear", match = FALSE) %>%
+    find_nodes(pattern = "parasite", match = FALSE) %>%
+    find_nodes(pattern = "serology", match = FALSE) %>%
+    find_nodes(pattern = "vaccine", match = FALSE)
+nodes_malaria
+```
+
+The `find_nodes()` function can also be used with the `semtypes` argument which allows you to specify a character vector of semantic types to search for. If both `pattern` and `semtypes` are provided, they are combined with an `OR` operation. If you would like them to be combined with an `AND` operation, nest the calls in sequence.
+
+```{r}
+## malaria OR disease (dsyn)
+find_nodes(g_small, pattern = "malaria", semtypes = "dsyn")
+
+## malaria AND disease (dsyn)
+find_nodes(g_small, pattern = "malaria") %>%
+    find_nodes(semtypes = "dsyn")
+```
+
+Finally, you can also select nodes by exact name with the `names` argument. (Capitalization is ignored.)
+
+```{r}
+find_nodes(g_small, names = "sickle trait")
+find_nodes(g_small, names = "SICKLE trait")
+```
+
+
+
+## Growing understanding by connecting nodes
+
+Now that we have nodes related to the ideas of interest, we can develop further understanding by asking the following questions:
+
+- How are these node sets connected to each other? (Aim 1)
+- What ideas (nodes) are connected to these nodes? (Aim 2)
+
+### Aim 1: Connecting different node sets
+
+To further Aim 1, we can use the `rsemmed::find_paths()` function. This function takes two sets of nodes `from` and `to` (corresponding to the two different ideas of interest) and returns all shortest paths between nodes in `from` ("source" nodes) and nodes in `to` ("target" nodes). That is, for every possible combination of a single node in `from` and a single node in `to`, all shortest *undirected* paths between those nodes are found.
+
+```{r}
+paths <- find_paths(graph = g_small, from = nodes_sickle, to = nodes_malaria)
+```
+
+#### Information from `find_paths()`
+
+The result of `find_paths()` is a list with one element for each of the nodes in `from`. Each element is itself a list of paths between `from` and `to`. In `r CRANpkg("igraph")`, paths are represented as vertex sequences (class `igraph.vs`).
+
+Recall that `nodes_sickle` contains the nodes below:
+
+```{r}
+nodes_sickle
+```
+
+Thus, `paths` is structured as follows:
+
+- `paths[[1]]` is a list of paths originating from `r nodes_sickle[1]$name`.
+- `paths[[2]]` is a list of paths originating from `r nodes_sickle[2]$name`.
+- `paths[[3]]` is a list of paths originating from `r nodes_sickle[3]$name`.
+
+With `lengths()` we can show the number of shortest paths starting at each of the three source ("from") nodes:
+
+```{r}
+lengths(paths)
+```
+
+#### Displaying paths
+
+There are two ways to display the information contained in these paths: `rsemmed::text_path()` and `rsemmed::plot_path()`.
+
+- `text_path()` displays a text version of a path
+- `plot_path()` displays a graphical version of the path
+
+For example, to show the 100th of the shortest paths originating from the first of the sickle trait nodes (`paths[[1]][[100]]`), we can use `text_path()` and `plot_path()` as below:
+
+```{r fig.wide=TRUE}
+this_path <- paths[[1]][[100]]
+tp <- text_path(g_small, this_path)
+tp
+plot_path(g_small, this_path)
+```
+
+`plot_path()` plots the subgraph defined by the nodes on the path.
+
+`text_path()` sequentially shows detailed information about semantic types and predicates for the pairs of nodes on the path. It also invisibly returns a list of `tibble`'s containing the displayed information, where each list element corresponds to a pair of nodes on the path.
+
+#### Refining paths with weights
+
+Finding paths between node sets necessarily uses shortest path algorithms for computational tractability. However, when these algorithms are run without modification, the shortest paths tend to be less useful than desired.
+
+For example, one of the shortest paths from "sickle trait" to "Malaria, Cerebral" goes through the node "Infant":
+
+```{r fig.wide=TRUE}
+this_path <- paths[[3]][[32]]
+plot_path(g_small, this_path)
+```
+
+This likely isn't the type of path we were hoping for. Why does such a path arise? For some insight, we can use the `degree()` function within the `r CRANpkg("igraph")` package to look at the degree distribution for all nodes in the Semantic MEDLINE graph. We also show the degree of the "Infant" node in red.
+
+```{r fig.wide=TRUE}
+plot(density(degree(g_small), from = 0),
+    xlab = "Degree", main = "Degree distribution")
+## The second node in the path is "Infant" --> this_path[2]
+abline(v = degree(g_small, v = this_path[2]), col = "red", lwd = 2)
+```
+
+We can see why "Infant" would be on a shortest path connecting "sickle trait" and "Malaria, Cerebral". "Infant" has a very large degree, and most of its connections are likely of the uninteresting form "PROCESS_OF" (a predicate indicating that the subject node is a biological process that occurs in the organism represented by the object node).
+
+We can discourage such paths from consideration by modifying edge weights. By default, all edges have a weight of 1 in the shortest path search, but we can effectively block off certain edges by giving them a high enough weight. For example, in `rsemmed::make_edge_weights()`, this weight is chosen to equal the number of nodes in the entire graph. (Note that if **all** paths from the source node to the target node contain a given undesired edge, the process of edge reweighting will not prevent paths from containing that edge.)
+
+The process of modifying edge weights starts by obtaining characteristics for all of the edges in the Semantic MEDLINE graph. This is achieved with the `rsemmed::get_edge_features()` function:
+
+```{r}
+e_feat <- get_edge_features(g_small)
+head(e_feat)
+```
+
+For every edge in the graph, the following information is returned in a `tibble`:
+
+- The name and semantic type (`semtype`) of the subject and object node
+- The predicate for the edge
+
+You can directly use the information from `get_edge_features()` to manually construct custom weights for edges. This could include giving certain edges maximal weights as described above or encouraging certain edges by giving them lower weights.
+
+The `get_edge_features()` function also has arguments `include_degree`, `include_node_ids`, and `include_num_instances` which can be set to `TRUE` to include additional edge features in the output.
+
+- `include_degree`: Adds information on the degree of the subject and object nodes and the degree percentile in the entire graph. (100th percentile = highest degree)
+- `include_node_ids`: Adds the integer IDs for the subject and object nodes. This IDs can be useful with `r CRANpkg("igraph")` functions that compute various node/vertex metrics (e.g., centrality measures with `igraph::closeness()`, `igraph::edge_betweenness()`).
+- `include_num_instances`: Adds information on the number of times a particular edge (predication) was seen in the Semantic MEDLINE database. This might be useful if you want to weight edges based on how commonly the relationship was reported.
+
+#### Weighting option: `make_edge_weights()`
+
+The `rsemmed::make_edge_weights()` function provides a way to create weights that encourage and/or discourage certain features. It allows you to specify the node names, node semantic types, and edge predicates that you would like to include in and/or exclude from paths.
+
+- The first two arguments `g` and `e_feat` supply required graph metadata.
+- "Out" arguments: `node_semtypes_out`, `node_names_out`, `edge_preds_out` are supplied as character vectors of node semantic types, names, and edge predicates that you wish to **exclude** from shortest path results. These three features are combined with an OR operation. An edge that meets any one of these criteria is given the highest weight possible to discourage paths from including this edge.
+- "In" arguments: `node_semtypes_in`, `node_names_in`, `edge_preds_in` are analogous to the "out" arguments but indicate types of edges you wish to **include** within shortest path results. Like with the "out arguments", these three features are combined with an OR operation. An edge that meets any one of these criteria is given a lower weight to encourage paths to include this edge.
+
+As an example of the impact of reweighting, let's examine the connections between "sickle trait" and "Malaria, Cerebral". In order to clearly see the effects of edge reweighting, below we obtain the paths from "sickle trait" to "Malaria, Cerebral":
+
+```{r fig.wide=TRUE}
+paths_subset <- find_paths(
+    graph = g_small,
+    from = find_nodes(g_small, names = "sickle trait"),
+    to = find_nodes(g_small, names = "Malaria, Cerebral")
+)
+paths_subset <- paths_subset[[1]]
+par(mfrow = c(1,2), mar = c(3,0,1,0))
+for (i in seq_along(paths_subset)) {
+    cat("Path", i, ": ==============================================\n")
+    text_path(g_small, paths_subset[[i]])
+    cat("\n")
+    plot_path(g_small, paths_subset[[i]])
+}
+```
+
+The "Child", "Woman", and "Infant" connections do not provide particularly useful biological insight. We could discourage paths from containing these nodes by specifically targeting those node names in the reweighting:
+
+```{r eval=FALSE}
+w <- make_edge_weights(g, e_feat,
+    node_names_out = c("Child", "Woman", "Infant")
+)
+```
+
+However, in case there are other similar nodes (like "Teens"), we might want to discourage this group of nodes by specifying the semantic type corresponding to this group. We can see the semantic types of the nodes on the shortest paths as follows:
+
+```{r}
+lapply(paths_subset, function(vs) {
+    vs$semtype
+})
+```
+    
+We can see that the "humn" and "popg" semantic types correspond to the class of nodes we would like to discourage. We supply them in the `node_semtypes_out` argument and repeat the path search with these weights:
+
+```{r}
+w <- make_edge_weights(g_small, e_feat, node_semtypes_out = c("humn", "popg"))
+
+paths_subset_reweight <- find_paths(
+    graph = g_small,
+    from = find_nodes(g_small, names = "sickle trait"),
+    to = find_nodes(g_small, names = "Malaria, Cerebral"),
+    weights = w
+)
+paths_subset_reweight
+```
+
+The effect of that reweighting was likely not quite what we wanted. The discouraging of "humn" and "popg" nodes only served to filter down the 7 original paths to 4 shortest paths. Because the first 4 of the 7 original paths were not explicitly removed through the reweighting, they remained the shortest paths from source to target. If we would like to see different types of paths (longer paths), we should indicate that we would like to remove all of the original paths' middle nodes. We can use the `rsemmed::get_middle_nodes()` function to obtain a character vector of names of middle nodes in a path set.
+
+```{r}
+## Obtain the middle nodes (2nd node on the path)
+out_names <- get_middle_nodes(g_small, paths_subset)
+
+## Readjust weights
+w <- make_edge_weights(g_small, e_feat,
+    node_names_out = out_names, node_semtypes_out = c("humn", "popg")
+)
+
+## Find paths with new weights
+paths_subset_reweight <- find_paths(
+    graph = g_small,
+    from = find_nodes(g_small, pattern = "sickle trait"),
+    to = find_nodes(g_small, pattern = "Malaria, Cerebral"),
+    weights = w
+)
+paths_subset_reweight <- paths_subset_reweight[[1]]
+
+## How many paths?
+length(paths_subset_reweight)
+```
+
+There is clearly a much greater diversity of paths resulting from this search.
+
+```{r fig.wide=TRUE}
+par(mfrow = c(1,2), mar = c(2,1.5,1,1.5))
+plot_path(g_small, paths_subset_reweight[[1]])
+plot_path(g_small, paths_subset_reweight[[2]])
+plot_path(g_small, paths_subset_reweight[[1548]])
+plot_path(g_small, paths_subset_reweight[[1549]])
+```
+
+When dealing with paths from several source and target nodes, it can be helpful to obtain the middle nodes on paths for specific source-target pairs. By default `get_midddle_nodes()` returns a single character vector of middle node names across *all* of the paths supplied. By using `collapse = FALSE`, the names of middle nodes can be returned for every source-target pair. When `collapse = FALSE`, this function enumerates all source-target pairs in `tibble` form. For every pair of source and target nodes in the paths object supplied, the final column (called `middle_nodes`) provides the names of the middle nodes as a character vector. (`middle_nodes` is a list-column.)
+
+```{r}
+get_middle_nodes(g_small, paths, collapse = FALSE)
+```
+
+The `make_edge_weights` function can also encourage certain features. Below we simultaneously discourage the `"humn"` and `"popg"` semantic types and encourage the `"gngm"` and `"aapp"` semantic types.
+
+```{r}
+w <- make_edge_weights(g_small, e_feat,
+    node_semtypes_out = c("humn", "popg"),
+    node_semtypes_in = c("gngm", "aapp")
+)
+
+paths_subset_reweight <- find_paths(
+    graph = g_small,
+    from = find_nodes(g_small, pattern = "sickle trait"),
+    to = find_nodes(g_small, pattern = "Malaria, Cerebral"),
+    weights = w
+)
+paths_subset_reweight <- paths_subset_reweight[[1]]
+length(paths_subset_reweight)
+```
+
+#### Summarizing information in paths
+
+When there are many shortest paths, it can be useful to get a high-level summary of the nodes and edges on those paths. The `rsemmed::summarize_semtypes()` function tabulates the semantic types of nodes on paths, and the `rsemmed::summarize_predicates()` functions tabulates the predicates of the edges.
+
+`summarize_semtypes()` removes the first and last node from the paths by default because that information is generally easily accessible by using `nodes_from$semtype` and `nodes_to$semtype`. Further, if the start and end nodes are not removed, they would be duplicated in the tabulation a number of times equal to the number of paths, which likely is not desirable.
+
+`summarize_semtypes()` invisibly returns a `tibble` where each row corresponds to a pair of source (`from`) and target (`to`) nodes in the paths object supplied, and the final `semtypes` column is a list-column containing a `table` of semantic type information. It automatically prints the semantic type tabulations for each `from`-`to` pair, but if you would like to turn off printing, use `print = FALSE`.
+
+```{r}
+## Reweighted paths from "sickle trait" to "Malaria, Cerebral"
+semtype_summary <- summarize_semtypes(g_small, paths_subset_reweight)
+semtype_summary
+semtype_summary$semtypes[[1]]
+```
+
+```{r}
+## Original paths from "sickle" to "malaria"-related notes
+summarize_semtypes(g_small, paths)
+```
+
+The `summarize_predicates()` function works similarly to give information on predicate counts.
+
+```{r}
+edge_summary <- summarize_predicates(g_small, paths)
+edge_summary
+edge_summary$predicates[[1]]
+```
+
+
+### Aim 2: Expanding a single node set
+
+Another way in which we can explore relations between ideas is to slowly expand a single set of ideas to see what other ideas are connected. We can do this with the `grow_nodes()` function. The `grow_nodes()` function takes a set of nodes and obtains the nodes that are directly connected to any of these nodes. That is, it obtains the set of nodes that are distance 1 away from the supplied nodes. We can call this set of nodes the "1-neighborhood" of the supplied nodes.
+
+```{r}
+nodes_sickle_trait <- nodes_sickle[2:3]
+nodes_sickle_trait
+
+nbrs_sickle_trait <- grow_nodes(g_small, nodes_sickle_trait)
+nbrs_sickle_trait
+```
+
+Not all nodes in the 1-neighborhood will be useful, and we may wish to remove them with `find_nodes(..., match = FALSE)`. We can use `summarize_semtypes()` to begin to identify such nodes. Using the argument `is_path = FALSE` will change the format of the display and output to better suit this situation.
+
+```{r}
+nbrs_sickle_trait_summ <- summarize_semtypes(g_small, nbrs_sickle_trait, is_path = FALSE)
+```
+
+The printed summary displays nodes grouped by semantic type. The semantic types are ordered such that the semantic type with the highest degree node is shown first. Often, these high degree nodes are less interesting because they represent fairly broad concepts.
+
+- The `node_degree` column shows the degree of the node in the Semantic MEDLINE graph.
+- The `node_degree_perc` column gives the percentile of the node degree relative to all nodes in the Semantic MEDLINE graph.
+
+The resulting `tibble` (`nbrs_sickle_trait_summ`) contains the same information that is printed and provides another way to mine for nodes to remove.
+
+After inspection of the summary, we can remove nodes based on semantic type and/or name. We can achieve this with `find_nodes(..., match = FALSE)`. The `...` can be any combination of the `pattern`, `names`, or `semtypes` arguments. If a node matches any of these pieces, it will be excluded with `match = FALSE`.
+
+```{r}
+length(nbrs_sickle_trait)
+nbrs_sickle_trait2 <- nbrs_sickle_trait %>%
+    find_nodes(
+        pattern = "^Mice",
+        semtypes = c("humn", "popg", "plnt", 
+            "fish", "food", "edac", "dora", "aggp"),
+        names = c("Polymerase Chain Reaction", "Mus"),
+        match = FALSE
+    )
+length(nbrs_sickle_trait2)
+```
+
+It is natural to consider a chaining like below as a strategy to iteratively explore outward from a seed idea.
+
+```{r eval=FALSE}
+seed_nodes %>% grow_nodes() %>% find_nodes() %>% grow_nodes() %>% find_nodes()
+```
+
+Be careful when implementing this strategy because the `grow_nodes()` step has the potential to return far more nodes than is manageable very quickly. Often after just two sequential uses of `grow_nodes()`, the number of nodes returned can be too large to efficiently sift through unless you conduct substantial filtering with `find_nodes()` between uses of `grow_nodes()`.
+
+
+
+# Summary
+
+In summary, the `r Biocpkg("rsemmed")` package provides tools for finding and connecting biomedical concepts.
+
+- The key function for finding (and pruning) concepts (graph nodes) is the `find_nodes()` function.
+- The key function for finding connections between concepts is `find_paths()`.
+    - The `make_edge_weights()` function will allow you to tailor path-finding by creating custom weights. It requires metadata provided by `get_edge_features()`.
+    - The `get_middle_nodes()`, `summarize_semtypes()`, and `summarize_predicates()` functions all help explore paths/node collections to inform reweighting.
+- The key function for finding directly related concepts is `grow_nodes()`.
+
+Your workflow will likely involve iteration between all of these different components.
+
+
+
+# Session Info
+
+```{r sessionInfo, echo=FALSE}
+sessionInfo()
+```
+
+
+
+# References
+
+
