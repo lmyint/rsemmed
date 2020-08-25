@@ -23,7 +23,7 @@ Suggests:
     rmarkdown
 Imports:
     methods,
-    magrittr
+    magrittr,
     stringr,
     dplyr
 VignetteBuilder: knitr
