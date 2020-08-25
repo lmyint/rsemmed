@@ -15,8 +15,6 @@ Authors@R:
            comment = c(ORCID = "0000-0003-2478-0331"))
 Depends:
     R (>= 4.0),
-    methods,
-    magrittr,
     igraph
 Suggests: 
     testthat,
@@ -24,6 +22,8 @@ Suggests:
     BiocStyle,
     rmarkdown
 Imports:
+    methods,
+    magrittr
     stringr,
     dplyr
 VignetteBuilder: knitr
