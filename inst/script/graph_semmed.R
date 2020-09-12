@@ -1,3 +1,7 @@
+## See predication_sql_to_csv.R to obtain the CSV version of 
+## the SQL dump file from
+## https://ii.nlm.nih.gov/SemRep_SemMedDB_SKR/SemMedDB/SemMedDB_download.shtml
+
 library(tidyverse)
 library(igraph)
 
@@ -23,7 +27,8 @@ write_rds(semtype_info, path = "../data/semtype_info.rds")
 ## First make edge list
 el_df <- pred %>%
     dplyr::filter(SUBJECT_NOVELTY, OBJECT_NOVELTY) %>%
-    select(SUBJECT_NAME, SUBJECT_SEMTYPE, PREDICATE, OBJECT_NAME, OBJECT_SEMTYPE) %>%
+    select(SUBJECT_NAME, SUBJECT_SEMTYPE, 
+        PREDICATE, OBJECT_NAME, OBJECT_SEMTYPE) %>%
     group_by(SUBJECT_NAME, PREDICATE, OBJECT_NAME) %>%
     summarize(
         num_instances = n(),

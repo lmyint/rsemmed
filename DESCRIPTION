@@ -1,5 +1,5 @@
 Package: rsemmed
-Version: 0.99.1
+Version: 0.99.2
 Title: An interface to the Semantic MEDLINE database
 Description: A programmatic interface to the Semantic MEDLINE database.
     It provides functions for searching the database for concepts and 

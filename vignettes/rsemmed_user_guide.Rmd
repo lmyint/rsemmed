@@ -36,7 +36,14 @@ The predications in SemMedDB can be represented in graph form. Nodes represent c
 
 ### Full data availability
 
-The full processed graph representation is available [here](https://drive.google.com/file/d/1b2Drq_NktFmbCBUQHlVjmRG85u4OsavR/view?usp=sharing). It is a processed version of the PREDICATION table (a SQL dump file) available from the [National Library of Medicine site](https://skr3.nlm.nih.gov/SemMedDB/index.html) for Semantic MEDLINE. The next section describes details about the processing.
+The full data underlying the complete Semantic MEDLINE database is available from from this [National Library of Medicine site](https://ii.nlm.nih.gov/SemRep_SemMedDB_SKR/SemMedDB/SemMedDB_download.shtml) as SQL dump files. In particular, the PREDICATION table is the primary file that is needed to construct the database. More information about the Semantic MEDLINE database is available [here](https://skr3.nlm.nih.gov/SemMed/index.html).
+
+See the `inst/script` folder for scripts to perform the following processing of these raw files:
+
+- Conversion of the original SQL dump files to a CSV file
+- Generation of the graph representation from the CSV file
+
+The next section describes details about the processing that occurs in these scripts to generate the graph representation.
 
 In this vignette, we will explore a much smaller subset of the full graph that suffices to show the full functionality of `r Biocpkg("rsemmed")`.
 
